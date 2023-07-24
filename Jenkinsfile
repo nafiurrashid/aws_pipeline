@@ -8,50 +8,41 @@ pipeline {
 
     stages {
         stage('Git Checkout🍴') {
-
             steps {
-                
-                //Checking whether the repository exists or not
+                // Checking whether the repository exists or not
                 checkout scmGit(branches: [[name: '*/master']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/nafiursan/aws_pipeline.git']])
-
             }
         }
-        
-        
-        stage('Modify application.properties') {
-    steps {
-        // Run the sed command to replace the URL in the application.properties file
-        //sh "sed -i \"s|^spring\\\\.datasource\\\\.url =.*|spring.datasource.url = jdbc:mysql://clouddevdb.cjldgoxvvwoc.us-west-2.rds.amazonaws.com:3306/sparklmsdb?useSSL=true|\" /var/lib/jenkins/workspace/AWS-Deployment/src/main/resources/application.properties"
-    sh 'echo haha'
-        
-    }
-}
 
-        
-        
-        
-        
-        stage('Build with Maven') {
+        stage('Add Environment Variables🏷') {
+            steps {
+                // Inject database credentials as environment variables
+                withCredentials([usernamePassword(credentialsId: 'RDS_credentials', passwordVariable: 'pass', usernameVariable: 'user')]) {
+                    // Run the sed commands to replace the URL, username, and password in the application.properties file
+                    sh """
+                        sed -i 's|^spring\\.datasource\\.url =.*|spring.datasource.url = jdbc:mysql://clouddevdb.cjldgoxvvwoc.us-west-2.rds.amazonaws.com:3306/sparklmsdb?useSSL=true|' /var/lib/jenkins/workspace/AWS-Deployment/src/main/resources/application.properties
+                        sed -i 's|^spring\\.datasource\\.username =.*|spring.datasource.username = ${user}|' /var/lib/jenkins/workspace/AWS-Deployment/src/main/resources/application.properties
+                        sed -i 's|^spring\\.datasource\\.password =.*|spring.datasource.password = ${pass}|' /var/lib/jenkins/workspace/AWS-Deployment/src/main/resources/application.properties
+                    """
+                }
+            }
+        }
+
+        stage('Build with Maven 🔨') {
             steps {
                 sh 'mvn clean install'
             }
         }
-        //ssh
-                stage('send jar file to ec2') {
+        
+        // SSH Deployment
+        stage('Send JAR file to EC2🥫') {
             steps {
-                sshPublisher(publishers: [sshPublisherDesc(configName: 'aws-ec2', transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: 'java -jar spark-lms-0.0.1-SNAPSHOT.jar &> /dev/null &', execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: 'target/', sourceFiles: 'target/*jar')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
+                sshPublisher(publishers: [sshPublisherDesc(configName: 'aws-ec2', transfers: [sshTransfer(cleanRemote: false, excludes: '', execCommand: './start_spark_lms.sh', execTimeout: 120000, flatten: false, makeEmptyDirs: false, noDefaultExcludes: false, patternSeparator: '[, ]+', remoteDirectory: '', remoteDirectorySDF: false, removePrefix: 'target/', sourceFiles: 'target/*jar')], usePromotionTimestamp: false, useWorkspaceInPromotion: false, verbose: false)])
             }
         }
-        
-        
-        //ssh ends
-    
-   
     }
-    
-  /*  
-   
-   post {
+
+    post {
         always {
             // Clean up any temporary files or resources here
             deleteDir()
@@ -67,6 +58,4 @@ pipeline {
             echo 'Build failed!'
         }
     }
-  */ 
-   
 }
